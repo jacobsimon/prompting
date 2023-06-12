@@ -1,22 +1,22 @@
-import Ajv, {JTDSchemaType, JTDParser} from "ajv/dist/jtd"
+import Ajv, {JSONSchemaType, ValidateFunction} from 'ajv';
 
 import {Generator} from './Generator';
 
 export type PromptOptions<T, U> = {
   generator?: Generator,
   text?: string,
-  schema?: JTDSchemaType<U>,
+  schema?: JSONSchemaType<U>,
   defaults?: Partial<T>,
   format?: string,
 };
 
-export class Prompt<T, U> {
+export class PromptClass<T, U> {
   private _text?: string;
   private _defaults: Partial<T>;
-  private _schema?: JTDSchemaType<U>;
+  private _schema?: JSONSchemaType<U>;
   private _vars?: T;
   private _generator?: Generator;
-  private _parser?: JTDParser<U>;
+  private _validator?: ValidateFunction;
   private _format?: string;
 
   constructor(options: PromptOptions<T, U> = {}) {
@@ -27,23 +27,32 @@ export class Prompt<T, U> {
     this._format = options.format || 'json';
 
     if (options.schema) {
-      this._parser = new Ajv().compileParser(options.schema);
+      this._validator = new Ajv().compile(options.schema);
     }
   }
 
-  private describeSchema(
-    schema: any = this._schema,
-    indent: string = '',
-  ): string {
-    let description = '';
-    const props = (schema || this._schema).properties || {};
-    for (const key in props) {
-      description += `\n${indent}- ${key} (${props[key].type}): "${props[key].description}"`;
-      if (props[key].type === 'object') {
-        description += this.describeSchema(props[key], indent + '  ');
+  private describeSchema(schema: any = this._schema): any {
+    if (!schema) return 'undefined';
+
+    switch (schema.type) {
+      case 'object': {
+        const props: any = {};
+
+        for (const key in schema.properties) {
+          props[key] = this.describeSchema(schema.properties[key]);
+        }
+
+        return props;
       }
+      case 'array': {
+        const itemSchema = schema.items;
+        return itemSchema.type === "object"
+          ? [this.describeSchema(itemSchema)]
+          : [itemSchema.type];
+      }
+      default:
+        return schema.type;
     }
-    return description;
   }
 
   private resolvePrompt(vars?: Partial<T>): string {
@@ -63,25 +72,30 @@ export class Prompt<T, U> {
     }
 
     if (this._schema) {
-      prompt += `\n\Please respond with valid ${this._format} data with the following format:\n`;
-      prompt += this.describeSchema();
+      prompt += ` Please provide a ${this._format} response with the following structure:\n`;
+      prompt += JSON.stringify(this.describeSchema(), null, 2);
     }
 
     return prompt;
   }
 
-  public defaults(values: Partial<T>): Prompt<T, U> {
+  public text(text: string): PromptClass<T, U> {
+    this._text = text;
+    return this;
+  }
+
+  public defaults(values: Partial<T>): PromptClass<T, U> {
     this._defaults = values;
     return this;
   }
 
-  public schema(schema: JTDSchemaType<U>): Prompt<T, U> {
+  public schema(schema: JSONSchemaType<U>): PromptClass<T, U> {
     this._schema = schema;
-    this._parser = new Ajv().compileParser(schema);
+    this._validator = new Ajv().compile(schema);
     return this;
   }
 
-  public async generate(vars: T): Promise<U> {
+  public async generate(vars?: T): Promise<U> {
     if (!this._generator) {
       throw new Error('No generator was provided yet. Use prompt.using(generator) to set a generator or use Generator.prompt() to create new prompts.');
     }
@@ -89,11 +103,12 @@ export class Prompt<T, U> {
     const prompt = this.resolvePrompt(vars);
     const generatedText = await this._generator.execute(prompt);
   
-    if (this._schema && this._parser) {
-      const data = this._parser(generatedText);
+    if (this._schema && this._validator) {
+      console.log(generatedText)
+      const data: U = JSON.parse(generatedText);
 
-      if (!data) {
-        throw new Error(`Response did not match the expected format: ${this._parser.message}`);
+      if (!this._validator(data)) {
+        throw new Error(`Invalid response: ${this._validator.errors?.map(err => err.message).join(', ')}`);
       }
 
       return data;
@@ -103,13 +118,13 @@ export class Prompt<T, U> {
     return generatedText as U;
   }
 
-  public withVars(vars: T): Prompt<T, U> {
-    const newPrompt = new Prompt<T, U>({...this.toJSON()});
+  public withVars(vars: T): PromptClass<T, U> {
+    const newPrompt = new PromptClass<T, U>({...this.toJSON()});
     newPrompt._vars = vars;
     return newPrompt;
   }
 
-  public using(generator: Generator): Prompt<T, U> {
+  public using(generator: Generator): PromptClass<T, U> {
     this._generator = generator;
     return this;
   }
@@ -129,9 +144,11 @@ export class Prompt<T, U> {
   public static fromJSON<T, U>(
     data: PromptOptions<T, U>,
     generator: Generator,
-  ): Prompt<T, U> {
-    return new Prompt<T, U>({...data}).using(generator);
+  ): PromptClass<T, U> {
+    return new PromptClass<T, U>({...data}).using(generator);
   }
 }
 
-
+export function Prompt<T, U>(options?: PromptOptions<T, U>): PromptClass<T, U> {
+  return new PromptClass<T, U>(options);
+}
