@@ -23,250 +23,121 @@ npm install prompting
 ## Examples
 
 ### Simple example
-First, import the `Prompt` class from the library and create a new instance:
+
+First, import the Prompt and OpenAIGenerator classes from the library:
 
 ```typescript
-import {Prompt, Generator} from 'prompting';
+import {Prompt, OpenAIGenerator} from 'prompting';
 
-const prompt = Prompt('What is your favorite {{topic}}?');
+const generator = new OpenAIGenerator({ apiKey: 'my_api_key', model: 'gpt-3.5' });
 
-const gpt = Generator.OpenAi({apiKey: 'my_api_key', model: 'gpt-3.5'});
+const prompt = Prompt()
+  .text('What is your favorite {{topic}}?')
+  .withVars({topic: 'animal'});
 
-const result = await gpt.generate(prompt, {topic: 'color'});
-
-// => e.g. 'orange'
+const result = await generator.execute(prompt.toString());
 ```
 
-### Structured JSON data
-To output a structured object and validate the result, call the `generate` method, passing your prompt and JSON schema as arguments:
+### Using Generator.prompt helper
+
+The `Generator.prompt()` helper can be used to create prompts that are already attached to the generator instance. This is useful for creating reusable prompts that can be used with different variables.
 
 ```typescript
-const gpt = Generator.OpenAi({...});
+import {OpenAIGenerator} from 'prompting';
 
-const prompt = gpt.prompt()
+const gpt = new OpenAIGenerator({ apiKey: 'my_api_key', model: 'gpt-3.5' });
+
+const prompt = gpt.prompt().text('What is your favorite {{topic}}?');
+
+const result = await prompt.generate({topic: 'color'});
+```
+
+### Structured JSON data with JSON Schema validation
+
+To output a structured object and validate the result automatically, construct your prompt using the `schema` method. The `Prompt` class leverages the power of JSON Schema and the battle-tested validation library [`ajv`](https://ajv.js.org/) to validate the response.
+
+```typescript
+import {OpenAIGenerator} from 'prompting';
+
+const generator = new OpenAIGenerator({apiKey: 'my_api_key', model: 'gpt-3.5'});
+const prompt = generator.prompt()
   .text('List {{num}} books by the author {{author}}.')
-  .defaultValues({num: 3})
+  .defaults({num: 3})
   .schema({
     type: 'array',
     items: {
       type: 'object',
       properties: {
-        title: {type: 'string', description: 'Title of the book'},
-        year: {type: 'number', description: 'Year of publication'},
+        title: {type: 'string'},
+        year: {type: 'string'},
       },
+      required: ['title', 'year'],
+    },
+  });
+
+const result = await prompt.generate({author: 'George Orwell'});
+```
+
+The `generate` method returns a Promise that resolves to the model's response if it matches the schema, or rejects with an error if the AI's response doesn't match the schema.
+
+## Usage with TypeScript
+
+The library supports strongly typed prompts, arguments, and return types when used with TypeScript. The `Prompt` class can be used with generics to specify the expected arguments and return type.
+
+### Typed Arguments and Response
+
+When creating a new prompt, specify the expected argument and response types by passing them as type parameters to the `Prompt` class. The argument type should be an object whose properties correspond to the variables used in the prompt text. The response type should match the structure defined by the JSON schema.
+
+Here's an example:
+
+```typescript
+import {Prompt} from 'prompting';
+
+type BookArgs = {author: string};
+type Book = {title: string, year: string};
+
+const prompt = Prompt<BookArgs, Book[]>()
+  .text('List books by the author {{author}}.')
+  .schema({
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        title: {type: 'string'},
+        year: {type: 'string'},
+      },
+      required: ['title', 'year'],
     },
   });
 
 const result = await prompt.generate({author: 'George Orwell', num: 2});
-
-// => [{title: '1984', year: 1942}, {title: 'Animal Farm', year: 1948}]
+// => result is of type Book[]
 ```
 
-The `generate` method returns a Promise that resolves to the model's response if it matches the schema, or rejects with an error if the AI's response doesn't match the schema or there's an issue with the request.
+In this example, the `generate` method expects an argument of type `BookArgs` and returns a promise that resolves to an array of `Book` objects, or throws an error if the model fails to generate a valid response.
 
-## Usage with TypeScript
+## Prompt API
 
-The library supports strongly typed prompts and schemas when used with TypeScript. You can use generics to specify the expected arguments and return type for the prompt's `generate` method:
+| Method | Description | Usage
+| --- | --- | ---
+| `Prompt(options?: PromptOptions)` | Creates a new instance of the Prompt class. | Prompt()
+| `text(template: string)` | Sets the text template for the prompt. | prompt.text('What is your favorite {{topic}}?')
+| `defaults(defaults: object)` | Sets default values for the variables in the text template. | prompt.defaults({topic: 'animal'})
+| `schema(schema: object)` | Sets the JSON schema for validating the generated result. | prompt.schema({type: 'string'})
+| `generate(vars?: object)` | Generates the final prompt text by replacing variables in the template, then executes the generator to get the AI response. | prompt.generate({color: 'red'})
+| `withVars(vars: object)` | Returns a copy of the Prompt with variables preset but does not generate the result, e.g. in order to call `toString` | prompt.withVars({topic: 'animal'})
+| `using(generator: Generator)` | Sets the generator for the prompt so that `generate` can be called. | prompt.using(generator)
+| `toString()` | Returns the final prompt text by replacing variables in the template. | prompt.toString()
+| `toJSON()` | Returns the prompt as a JSON object, useful for serializing to a file or database. | prompt.toJSON()
 
-```typescript
-Prompt<IPromptArguments, IPromptResponse> {
-  generate(args: IPromptArguments): Promise<IPromptResponse> {
-    // ...
-  }
-}
-```
+### PromptOptions
 
-Example usage:
-
-```typescript
-type BookArgs = {author: string, num?: number};
-type BookResult = {title: string, year: number};
-
-const prompt = Prompt<BookArgs, BookResult[]>()
-  .text('List {{num}} books by the author {{author}}.')
-  .defaultValues({num: 3})
-  .schema({
-    type: 'array',
-    items: {
-      type: 'object',
-      properties: {
-        title: {type: 'string', description: 'Title of the book'},
-        year: {type: 'number', description: 'Year of publication'},
-      },
-    },
-  });
-```
-
-## Schema Documentation
-
-We use a JSON schema format to define the expected structure of the model's response. This documentation explains the fields and possible structures that can be used in the schema. Under the hood, the library uses `ajv`, a battle-tested validation and parsing library.
-
-#### Basic Structure
-
-The schema should be a valid JSON object with the following structure:
-
-```json
-{
-  "type": "object",
-  "properties": {
-    // Properties defining the structure of the AI response
-  },
-  "required": ["propertyA", "propertyB"]
-}
-```
-
-- **type**: Specifies the type of the object. In most cases, it should be set to `"object"` as the AI response is expected to be an object.
-- **properties**: Defines the properties that should be present in the AI response. Each property should have a name and a corresponding schema definition.
-- **required**: Specifies the properties that are required in the AI response. It should be an array of property names.
-
-#### Property Definitions
-
-Each property within the `properties` field should follow the schema definition format. Here's an example property definition:
-
-```json
-{
-  "propertyName": {
-    "type": "string",
-    "description": "Description of the property"
-  }
-}
-```
-
-- **type**: Specifies the data type of the property. It can be `"string"`, `"number"`, `"boolean"`, `"array"`, or `"object"`. Additional data types may be supported depending on the JSON schema implementation.
-- **description** (optional): Provides a description of the property. This is useful for conveying the purpose or expected content of the property.
-
-#### Nested Objects
-
-To define a nested object within the schema, use the `"object"` type:
-
-```json
-{
-  "nestedObject": {
-    "type": "object",
-    "properties": {
-      // Properties defining the structure of the nested object
-    },
-    "required": ["property1", "property2"]
-  }
-}
-```
-
-You can nest objects to any depth by defining properties within the nested object's `"properties"` field.
-
-#### Arrays
-
-To define an array within the schema, use the `"array"` type:
-
-```json
-{
-  "arrayProperty": {
-    "type": "array",
-    "items": {
-      // Schema definition for the items in the array
-    }
-  }
-}
-```
-
-- **items**: Defines the schema for the items within the array. It can be a single schema definition or an array of schema definitions if the array contains different types of items.
-
-#### Examples
-
-Here are a few examples to illustrate different schema structures:
-
-##### Example 1: Simple Object
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "name": {
-      "type": "string",
-      "description": "Name of the object"
-    },
-    "age": {
-      "type": "number",
-      "description": "Age of the object"
-    }
-  },
-  "required": ["name"]
-}
-```
-
-##### Example 2: Nested Object
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "person": {
-      "type": "object",
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "Name of the person"
-        },
-        "age": {
-          "type": "number",
-          "description": "Age of the person"
-        }
-      },
-      "required": ["name"]
-    }
-  },
-  "required": ["person"]
-}
-```
-
-##### Example 3: Array of Objects
-
-```json
-{
-  "type": "object",
-  "properties": {
-
-
-    "books": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "title": {
-            "type": "string",
-            "description": "Title of the book"
-          },
-          "author": {
-            "type": "string",
-            "description": "Author of the book"
-          }
-        },
-        "required": ["title", "author"]
-      }
-    }
-  },
-  "required": ["books"]
-}
-```
-
-## Development
-
-To develop `prompting`, you'll need Node.js and npm. First, install the dependencies:
-
-```bash
-npm install
-```
-
-You can then compile the TypeScript code to JavaScript using the `build` script:
-
-```bash
-npm run build
-```
-
-To run the tests, use the `test` script:
-
-```bash
-npm run test
-```
+| Property | Type | Description
+| --- | --- | ---
+| `text` | string | The text template for the prompt.
+| `defaults` | object | Default values for the variables in the text template.
+| `schema` | object | The JSON schema for validating the generated result.
+| `generator` | Generator | The generator instance to use for executing the prompt.
 
 ## Contributing
 
