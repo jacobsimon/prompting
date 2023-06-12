@@ -1,5 +1,7 @@
 # prompting
 
+[![npm version](http://img.shields.io/npm/v/prompting.svg)](https://npmjs.org/package/prompting)
+
 > *A batteries-included, model-agnostic prompt engineering library for Node.js and TypeScript.*
 
 Build dynamic, reusable prompts that output structured data that's ready to use in your application or API. Compatible with all text-based generative language models such as OpenAI GPT.
