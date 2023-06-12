@@ -1,6 +1,6 @@
 {
   "name": "prompting",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A prompt engineering library for Node.js and TypeScript",
   "main": "dist/index.js",
   "scripts": {
