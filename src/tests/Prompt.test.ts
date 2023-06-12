@@ -1,8 +1,6 @@
 import {Prompt} from '../lib';
 
 describe('Prompt', () => {
-  it.todo('should be tested');
-
   it('should generate a prompt', async () => {
     type AuthorPrompt = {
       name: string;
@@ -27,7 +25,7 @@ describe('Prompt', () => {
           },
           required: ['title', 'year'],
         },
-      }).withVars({name: 'George Orwell'});
+      }).vars({name: 'George Orwell'});
 
     expect(prompt.toString()).toEqual(
 `List 3 books by George Orwell. Please provide a json response with the following structure:

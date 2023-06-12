@@ -79,6 +79,17 @@ export class PromptClass<T, U> {
     return prompt;
   }
 
+  private validate(data: unknown): data is U {
+    if (!this._validator) {
+      throw new Error('No validator set up.');
+    }
+    const valid = this._validator(data);
+    if (!valid) {
+      throw new Error(`Invalid data: ${this._validator.errors?.map(err => err.message).join(', ')}`);
+    }
+    return true;
+  }
+
   public text(text: string): PromptClass<T, U> {
     this._text = text;
     return this;
@@ -104,21 +115,17 @@ export class PromptClass<T, U> {
     const generatedText = await this._generator.execute(prompt);
   
     if (this._schema && this._validator) {
-      console.log(generatedText)
-      const data: U = JSON.parse(generatedText);
-
-      if (!this._validator(data)) {
-        throw new Error(`Invalid response: ${this._validator.errors?.map(err => err.message).join(', ')}`);
+      const data: unknown = JSON.parse(generatedText);
+      if (this.validate(data)) {
+        return data;
       }
-
-      return data;
     }
 
     // Return string type if no schema is provided
     return generatedText as U;
   }
 
-  public withVars(vars: T): PromptClass<T, U> {
+  public vars(vars: T): PromptClass<T, U> {
     const newPrompt = new PromptClass<T, U>({...this.toJSON()});
     newPrompt._vars = vars;
     return newPrompt;
