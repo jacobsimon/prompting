@@ -1,15 +1,15 @@
 {
   "name": "prompting",
   "version": "0.1.0",
-  "description": "A library to interface with AI APIs and format responses",
+  "description": "A prompt engineering library for Node.js and TypeScript",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "test": "jest"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Jacob Simon",
+  "license": "MIT",
   "devDependencies": {
     "@types/jest": "^27.5.2",
     "jest": "^27.1.1",
